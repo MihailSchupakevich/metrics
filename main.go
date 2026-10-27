@@ -2,7 +2,9 @@ package main
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"
+	"metrics/middleware"
 	"net/http"
 	"net/http/pprof"
 	_ "net/http/pprof"
@@ -19,11 +21,16 @@ func main() {
 	}()
 
 	r := gin.Default()
+
+	r.Use(middleware.PrometheusMiddleware())
+
 	r.GET("/ping", func(c *gin.Context) { c.String(http.StatusOK, "pong") })
-	r.GET("/metrics/heap", heapHandler)
-	//r.GET("/metrics/goroutine", goroutineHandler)
-	//r.GET("/metrics/mutex", mutexHandler)
-	//	r.GET("/metrics/heap", textPprofHandler("heap"))
+	r.GET("/metrics/goroutine", textPprofHandler("goroutine"))
+	r.GET("/metrics/mutex", textPprofHandler("mutex"))
+	r.GET("/metrics/heap", textPprofHandler("heap"))
+
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
 	log.Fatal(r.Run(":8080"))
 }
 
@@ -33,28 +40,11 @@ func (w *noGzipWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
-//func (w *noGzipWriter) Write(data []byte) (int, error) {
-//	if w.Status() == 0 {
-//		w.WriteHeader(http.StatusOK)
-//	}
-//	return w.ResponseWriter.Write(data)
-//}
-
-func heapHandler(c *gin.Context) {
-	//noGzipWritter := &noGzipWriter{c.Writer}
-	//pprof.Handler("heap").ServeHTTP(noGzipWritter, c.Request)
-	url := "http://localhost:6060/debug/pprof/heap?debug=1"
-	c.Redirect(http.StatusFound, url)
-}
-
-func goroutineHandler(c *gin.Context) {
-	noGzipWritter := &noGzipWriter{c.Writer}
-	pprof.Handler("goroutine").ServeHTTP(noGzipWritter, c.Request)
-
-}
-func mutexHandler(c *gin.Context) {
-	noGzipWritter := &noGzipWriter{c.Writer}
-	pprof.Handler("mutex").ServeHTTP(noGzipWritter, c.Request)
+func (w *noGzipWriter) Write(data []byte) (int, error) {
+	if w.Status() == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(data)
 }
 
 func textPprofHandler(profile string) gin.HandlerFunc {
